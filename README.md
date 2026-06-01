@@ -35,12 +35,12 @@ Edit `config/example_config.json` with your PFS server details:
 ```json
 {
   "server": {
-    "host": "pfs-gw-hjp4.corp.bench.com",
+    "host": "pfs-gw-thp4.corp.bench.com",
     "port": 50000,
     "timeout": 30
   },
   "database": {
-    "name": "PFSHJP4"
+    "name": "PFSTHP4"
   }
 }
 ```

@@ -169,6 +169,9 @@ class TestLinkClient:
         for attempt in range(1, self.max_retries + 1):
             try:
                 return self._send_request(request)
+            except socket.gaierror as e:
+                # DNS resolution failures are deterministic; retrying only adds delay.
+                raise ConnectionException(f"Unable to resolve host '{self.host}': {e}")
             except socket.timeout as e:
                 last_exception = e
                 logger.warning(f"Request timeout (attempt {attempt}/{self.max_retries})")
