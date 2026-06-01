@@ -271,8 +271,14 @@ class MainWindow(QMainWindow):
         self._worker.result_ready.connect(self._thread.quit)
         self._worker.error_occurred.connect(self._thread.quit)
         self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.finished.connect(self._clear_execute_worker_state)
 
         self._thread.start()
+
+    def _clear_execute_worker_state(self):
+        """Drop references to the finished thread and worker."""
+        self._thread = None
+        self._worker = None
 
     def _on_result_ready(self, status_name: str, message: str, data_lines, elapsed_ms: float):
         """Relay successful result to ResultsPanel and LogViewer."""
