@@ -1,0 +1,17 @@
+{
+  "server": {
+    "host": "pfs-gw-hjp4.corp.bench.com",
+    "port": 50000,
+    "timeout": 30,
+    "validate_cert": true
+  },
+  "database": {
+    "name": "PFSHJP4"
+  },
+  "credentials": {
+    "user_id": "",
+    "password": ""
+  },
+  "work_center": "",
+  "operation_code": ""
+}
