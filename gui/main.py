@@ -47,7 +47,7 @@ def _make_dark_palette() -> QPalette:
     pal.setColor(QPalette.Text,            QColor(220, 220, 220))
     pal.setColor(QPalette.Button,          QColor(55, 55, 60))
     pal.setColor(QPalette.ButtonText,      QColor(220, 220, 220))
-    pal.setColor(QPalette.BrightText,      Qt.red)
+    pal.setColor(QPalette.BrightText,      QColor(255, 0, 0))
     pal.setColor(QPalette.Link,            QColor(42, 130, 218))
     pal.setColor(QPalette.Highlight,       QColor(42, 130, 218))
     pal.setColor(QPalette.HighlightedText, QColor(20, 20, 20))

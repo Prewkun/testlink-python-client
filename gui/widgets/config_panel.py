@@ -8,7 +8,7 @@ try:
         QGroupBox, QFormLayout, QLineEdit, QSpinBox,
         QCheckBox, QPushButton, QHBoxLayout, QVBoxLayout,
     )
-    from PyQt5.QtCore import pyqtSignal, QSettings
+    from PyQt5.QtCore import pyqtSignal, QSettings, Qt
 except ImportError as exc:
     print(f"PyQt5 is required. Install with: pip install PyQt5\n{exc}")
     sys.exit(1)
@@ -46,7 +46,7 @@ class ConfigPanel(QGroupBox):
 
         form = QFormLayout()
         form.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
-        form.setLabelAlignment(0)  # Qt.AlignLeft
+        form.setLabelAlignment(Qt.AlignLeft)
 
         self.host_edit = QLineEdit()
         self.host_edit.setPlaceholderText("e.g. pfs-server.example.com")
