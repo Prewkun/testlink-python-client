@@ -1,9 +1,9 @@
 """
-Procedure selector with dynamic parameter forms, live request preview, and Execute button.
+Procedure selector with dynamic parameter forms based on KB definitions.
 
-Procedure categories and their parameter lists are discovered dynamically via the
-PROCEDURE_NAME / REQUIRED_PARAMS / OPTIONAL_PARAMS class attributes defined in
-src/procedures/.
+Procedure categories and their parameter lists are discovered dynamically via:
+1. KB_PROCEDURES from kb_parser.py (knowledge base definitions)
+2. Fallback to PROCEDURE_NAME / REQUIRED_PARAMS / OPTIONAL_PARAMS class attributes
 """
 
 import sys
@@ -18,7 +18,7 @@ try:
     from PyQt5.QtWidgets import (
         QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
         QListWidget, QListWidgetItem, QFormLayout, QLineEdit,
-        QPushButton, QTextEdit, QGroupBox, QScrollArea,
+        QPushButton, QTextEdit, QGroupBox, QScrollArea, QCheckBox,
     )
     from PyQt5.QtCore import Qt, pyqtSignal
     from PyQt5.QtGui import QFont, QColor
@@ -26,13 +26,19 @@ except ImportError as exc:
     print(f"PyQt5 is required. Install with: pip install PyQt5\n{exc}")
     sys.exit(1)
 
+# Import KB procedures
+try:
+    from kb_parser import KB_PROCEDURES
+except ImportError:
+    KB_PROCEDURES = {}
+
 
 # ── Category membership sets ──────────────────────────────────────────────────
 
 TRANSACTION_PROCS = frozenset({
     "PfsVerifyUserInput", "PfsSendResults", "PfsSendSignoff", "PfsPanelize",
     "PfsLinkCompData", "PfsFindSerialNumber", "PfsGenerateSerialNumbers",
-    "PfsSetHalt", "PfsClearHalt",
+    "PfsSetHalt", "PfsClearHalt", "PfsQuery",
 })
 
 RETRIEVAL_PROCS = frozenset({
@@ -48,7 +54,7 @@ RETRIEVAL_PROCS = frozenset({
 })
 
 UTILITY_PROCS = frozenset({
-    "PfsQuery", "PfsExecuteProcedure", "PfsGenerateReport", "PfsExportData",
+    "PfsExecuteProcedure", "PfsGenerateReport", "PfsExportData",
     "PfsImportData", "PfsGetSystemInfo", "PfsBackupDatabase", "PfsRestoreDatabase",
     "PfsGetAuditLog", "PfsGetUsers", "PfsGetUserRoles",
 })
@@ -91,34 +97,67 @@ def _get_category(proc_name: str) -> str:
 
 def _load_all_procedures() -> dict:
     """
-    Import every procedure class exported by src/procedures/__init__.py.
+    Load all procedures from KB_PROCEDURES and import from src/procedures/.
 
     Returns:
-        Mapping of procedure name string → procedure class.
-        Non-class exports (template functions) are silently skipped.
+        Mapping of procedure name string → procedure class or KB-based wrapper.
+        If KB has the procedure, use that. Otherwise, import from src/procedures/.
     """
     result = {}
+    
+    # First, add all KB procedures as wrapper classes
+    for proc_name, kb_spec in KB_PROCEDURES.items():
+        result[proc_name] = _create_kb_procedure_class(proc_name, kb_spec)
+    
+    # Then, import from src/procedures and add any missing ones
     try:
         import procedures as proc_mod
         for name in getattr(proc_mod, "__all__", []):
             cls = getattr(proc_mod, name, None)
             if cls is not None and hasattr(cls, "PROCEDURE_NAME") and hasattr(cls, "REQUIRED_PARAMS"):
-                result[name] = cls
+                # Don't override KB definitions
+                if cls.PROCEDURE_NAME not in result:
+                    result[name] = cls
     except Exception as exc:
-        print(f"Warning: could not load procedures: {exc}")
+        print(f"Warning: could not load procedures from src: {exc}")
+    
     return result
+
+
+def _create_kb_procedure_class(proc_name: str, kb_spec: dict):
+    """
+    Create a procedure class wrapper from KB specification.
+    
+    This allows the GUI to use KB definitions without requiring actual procedure classes.
+    """
+    class KBProcedure:
+        PROCEDURE_NAME = proc_name
+        REQUIRED_PARAMS = kb_spec.get('required', [])
+        OPTIONAL_PARAMS = kb_spec.get('optional', [])
+    
+    return KBProcedure
 
 
 # ── ParamField ────────────────────────────────────────────────────────────────
 
 class ParamField(QWidget):
-    """Single labelled input row for one procedure parameter."""
+    """
+    Single labelled input row for one procedure parameter.
+    
+    Supports:
+    - Required/optional styling
+    - Conditional visibility (show only when certain conditions are met)
+    - Tooltip with field description
+    """
 
     value_changed = pyqtSignal()
+    visibility_changed = pyqtSignal(bool)  # Emitted when field visibility changes
 
     def __init__(self, param_name: str, required: bool = False, parent=None):
         super().__init__(parent)
         self.param_name = param_name
+        self.required = required
+        self.is_visible = True
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -129,6 +168,11 @@ class ParamField(QWidget):
             self.edit.setStyleSheet(
                 "background-color: #3a2e00; border: 1px solid #aa8800;"
             )
+        else:
+            self.edit.setStyleSheet(
+                "background-color: #1a1a1a; border: 1px solid #333333;"
+            )
+        
         self.edit.textChanged.connect(self.value_changed.emit)
         layout.addWidget(self.edit)
 
@@ -137,6 +181,12 @@ class ParamField(QWidget):
 
     def set_value(self, value: str):
         self.edit.setText(str(value) if value is not None else "")
+    
+    def set_visible(self, visible: bool):
+        """Show or hide this field."""
+        self.is_visible = visible
+        self.setVisible(visible)
+        self.visibility_changed.emit(visible)
 
 
 # ── CommandPanel ──────────────────────────────────────────────────────────────
@@ -275,8 +325,21 @@ class CommandPanel(QWidget):
         self._param_fields.clear()
 
         proc = self._current_proc
-        required = _norm_params(proc.REQUIRED_PARAMS)
-        optional = _norm_params(proc.OPTIONAL_PARAMS)
+        
+        # Try to get from KB first, then fall back to class attributes
+        if hasattr(proc, 'REQUIRED_PARAMS'):
+            required = _norm_params(proc.REQUIRED_PARAMS)
+        else:
+            required = []
+        
+        if hasattr(proc, 'OPTIONAL_PARAMS'):
+            optional = _norm_params(proc.OPTIONAL_PARAMS)
+        else:
+            optional = []
+        
+        # Remove REQUEST_TYPE from display (we handle it separately)
+        required = [p for p in required if p != 'REQUEST_TYPE']
+        optional = [p for p in optional if p != 'REQUEST_TYPE']
 
         # Required params — gold label, highlighted background
         for pname in required:
